@@ -55,6 +55,16 @@ If available, prefer repository scripts:
 - `scripts/start_streams.sh`
 - `scripts/run_stream_executor.sh`
 
+Portable script bundle is included in this skill at:
+- `scripts/start_streams.sh`
+- `scripts/operator_watch.sh`
+- `scripts/run_stream_executor.sh`
+- `scripts/dispatch_task.sh`
+- `scripts/checkpoint_streams.sh`
+- `scripts/README.md`
+
+Use `--root <path>` (or `STREAM_ROOT`) when running scripts outside the target repo.
+
 ## Executor Dispatch and Model Selection
 
 Pick model by task profile:

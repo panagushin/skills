@@ -5,6 +5,7 @@ Reusable Codex skills.
 ## Included skills
 
 - `stream-orchestrator`: non-executing orchestration skill for routing, dispatching, monitoring, escalation, and closeout across multiple workstreams.
+  - includes portable shell scripts in `stream-orchestrator/scripts/` (`start_streams.sh`, `operator_watch.sh`, `run_stream_executor.sh`, `dispatch_task.sh`, `checkpoint_streams.sh`)
 
 ## Install
 

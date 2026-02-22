@@ -87,6 +87,11 @@ display_lane_name() {
   esac
 }
 
+has_control_chars() {
+  local value="$1"
+  [[ "$value" =~ [[:cntrl:]] ]]
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root)
@@ -151,10 +156,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if has_control_chars "$ROOT_DIR"; then
+  echo "Error: --root contains control characters." >&2
+  exit 1
+fi
+
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "Error: ROOT_DIR does not exist: $ROOT_DIR" >&2
   exit 1
 fi
+
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+STATE_DIR="$ROOT_DIR/docs/stream-state"
+CHECKPOINT_DIR="$STATE_DIR/checkpoints"
 
 STREAM_INPUT="$(trim "$STREAM_INPUT")"
 STATUS="$(trim "$STATUS")"

@@ -32,6 +32,23 @@ Options:
 EOF
 }
 
+has_control_chars() {
+  local value="$1"
+  [[ "$value" =~ [[:cntrl:]] ]]
+}
+
+validate_model_name() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9._:+/-]+$ ]]
+}
+
+sanitize_single_line() {
+  local value="$1"
+  value="${value//$'\r'/ }"
+  value="${value//$'\n'/ }"
+  printf '%s' "$value"
+}
+
 normalize_stream() {
   case "$1" in
     D-BE|delivery-backend|backend) echo "D-BE" ;;
@@ -161,6 +178,8 @@ write_heartbeat() {
   fi
 
   mkdir -p "$RUNTIME_DIR"
+  hb_task="$(sanitize_single_line "$hb_task")"
+  hb_detail="$(sanitize_single_line "$hb_detail")"
   now_utc="$(date -u '+%Y-%m-%d %H:%M:%SZ')"
   {
     echo "timestamp_utc=$now_utc"
@@ -311,10 +330,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if has_control_chars "$ROOT_DIR"; then
+  echo "Error: --root contains control characters." >&2
+  exit 1
+fi
+
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "Error: ROOT_DIR does not exist: $ROOT_DIR" >&2
   exit 1
 fi
+
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+RUNTIME_DIR="$ROOT_DIR/docs/stream-state/runtime"
 
 if [[ -z "$STREAM_INPUT" ]]; then
   echo "Error: --stream is required." >&2
@@ -324,6 +351,11 @@ fi
 
 if ! command -v codex >/dev/null 2>&1; then
   echo "Error: codex CLI is not available in PATH." >&2
+  exit 1
+fi
+
+if [[ -n "$MODEL" ]] && ! validate_model_name "$MODEL"; then
+  echo "Error: --model contains unsupported characters." >&2
   exit 1
 fi
 

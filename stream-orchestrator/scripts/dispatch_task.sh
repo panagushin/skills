@@ -99,6 +99,19 @@ array_contains() {
   return 1
 }
 
+has_control_chars() {
+  local value="$1"
+  [[ "$value" =~ [[:cntrl:]] ]]
+}
+
+validate_task_id() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  [[ "$value" != .* ]] || return 1
+  [[ "$value" != *..* ]] || return 1
+  return 0
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root)
@@ -150,10 +163,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if has_control_chars "$ROOT_DIR"; then
+  echo "Error: --root contains control characters." >&2
+  exit 1
+fi
+
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "Error: ROOT_DIR does not exist: $ROOT_DIR" >&2
   exit 1
 fi
+
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+TASKS_DIR="$ROOT_DIR/docs/stream-tasks"
 
 TITLE="$(trim "$TITLE")"
 GOAL="$(trim "$GOAL")"
@@ -174,6 +195,12 @@ if [[ -z "$TASK_ID" ]]; then
   TASK_ID="$(date -u '+%Y%m%d-%H%M')-$(slugify "$TITLE")"
 fi
 
+if ! validate_task_id "$TASK_ID"; then
+  echo "Error: invalid --task-id '$TASK_ID'. Use only letters, digits, '.', '_' and '-' (no '..')." >&2
+  exit 1
+fi
+
+mkdir -p "$TASKS_DIR"
 TASK_DIR="$TASKS_DIR/$TASK_ID"
 if [[ -e "$TASK_DIR" ]]; then
   echo "Error: task directory already exists: $TASK_DIR" >&2

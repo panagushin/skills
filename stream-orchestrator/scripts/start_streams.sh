@@ -41,6 +41,25 @@ Options:
 EOF
 }
 
+shell_escape() {
+  printf '%q' "$1"
+}
+
+has_control_chars() {
+  local value="$1"
+  [[ "$value" =~ [[:cntrl:]] ]]
+}
+
+validate_session_name() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+validate_model_name() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9._:+/-]+$ ]]
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root)
@@ -123,8 +142,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if has_control_chars "$ROOT_DIR"; then
+  echo "Error: --root contains control characters." >&2
+  exit 1
+fi
+
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "Error: ROOT_DIR does not exist: $ROOT_DIR" >&2
+  exit 1
+fi
+
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+
+if ! validate_session_name "$SESSION_NAME"; then
+  echo "Error: --session contains unsupported characters. Allowed: letters, digits, '.', '_' and '-'." >&2
+  exit 1
+fi
+
+if [[ -n "$EXECUTOR_MODEL" ]] && ! validate_model_name "$EXECUTOR_MODEL"; then
+  echo "Error: --executor-model contains unsupported characters." >&2
   exit 1
 fi
 
@@ -174,11 +210,17 @@ bootstrap_info_window() {
   local state_rel
   local state_abs
   local cmd
+  local q_root
+  local q_state_abs
+  local q_tasks_dir
 
   state_rel="$(state_file_for_window "$window")"
   state_abs="$ROOT_DIR/$state_rel"
+  q_root="$(shell_escape "$ROOT_DIR")"
+  q_state_abs="$(shell_escape "$state_abs")"
+  q_tasks_dir="$(shell_escape "$ROOT_DIR/docs/stream-tasks")"
 
-  cmd="cd \"$ROOT_DIR\"; clear; echo \"[$window] Aeonic stream session\"; echo \"State file: $state_rel\"; echo; if [ -f \"$state_abs\" ]; then sed -n '1,120p' \"$state_abs\"; else echo \"State file missing: $state_rel\"; fi; echo; echo \"--- git status -sb ---\"; git status -sb; echo; echo \"--- recent task dirs ---\"; ls -1 \"$ROOT_DIR/docs/stream-tasks\" 2>/dev/null | tail -n 10"
+  cmd="cd $q_root; clear; echo \"[$window] Aeonic stream session\"; echo \"State file: $state_rel\"; echo; if [ -f $q_state_abs ]; then sed -n '1,120p' $q_state_abs; else echo \"State file missing: $state_rel\"; fi; echo; echo \"--- git status -sb ---\"; git status -sb; echo; echo \"--- recent task dirs ---\"; ls -1 $q_tasks_dir 2>/dev/null | tail -n 10"
   tmux send-keys -t "${SESSION_NAME}:${window}" C-c
   tmux send-keys -t "${SESSION_NAME}:${window}" "$cmd" C-m
 }
@@ -188,15 +230,23 @@ bootstrap_operator_window() {
   local state_abs
   local cmd
   local watch_cmd
+  local q_root
+  local q_state_abs
+  local q_script
+  local q_session
 
   state_rel="$(state_file_for_window "O")"
   state_abs="$ROOT_DIR/$state_rel"
+  q_root="$(shell_escape "$ROOT_DIR")"
+  q_state_abs="$(shell_escape "$state_abs")"
+  q_script="$(shell_escape "$SCRIPT_DIR/operator_watch.sh")"
+  q_session="$(shell_escape "$SESSION_NAME")"
 
   if [[ "$OPERATOR_WATCH" -eq 1 ]]; then
-    watch_cmd="\"$SCRIPT_DIR/operator_watch.sh\" --root \"$ROOT_DIR\" --session \"$SESSION_NAME\" --interval \"$WATCH_INTERVAL\" --stale-seconds \"$WATCH_STALE_SECONDS\""
-    cmd="cd \"$ROOT_DIR\"; clear; echo \"[O] Operator watch loop\"; echo \"State file: $state_rel\"; echo \"Watch interval: ${WATCH_INTERVAL}s\"; echo \"Stale threshold: ${WATCH_STALE_SECONDS}s\"; echo; if [ -f \"$state_abs\" ]; then sed -n '1,80p' \"$state_abs\"; else echo \"State file missing: $state_rel\"; fi; echo; $watch_cmd"
+    watch_cmd="$q_script --root $q_root --session $q_session --interval $WATCH_INTERVAL --stale-seconds $WATCH_STALE_SECONDS"
+    cmd="cd $q_root; clear; echo \"[O] Operator watch loop\"; echo \"State file: $state_rel\"; echo \"Watch interval: ${WATCH_INTERVAL}s\"; echo \"Stale threshold: ${WATCH_STALE_SECONDS}s\"; echo; if [ -f $q_state_abs ]; then sed -n '1,80p' $q_state_abs; else echo \"State file missing: $state_rel\"; fi; echo; $watch_cmd"
   else
-    cmd="cd \"$ROOT_DIR\"; clear; echo \"[O] Operator stream (manual mode)\"; echo \"State file: $state_rel\"; echo; if [ -f \"$state_abs\" ]; then sed -n '1,120p' \"$state_abs\"; else echo \"State file missing: $state_rel\"; fi; echo; echo \"Operator watch is disabled (--no-operator-watch).\""
+    cmd="cd $q_root; clear; echo \"[O] Operator stream (manual mode)\"; echo \"State file: $state_rel\"; echo; if [ -f $q_state_abs ]; then sed -n '1,120p' $q_state_abs; else echo \"State file missing: $state_rel\"; fi; echo; echo \"Operator watch is disabled (--no-operator-watch).\""
   fi
 
   tmux send-keys -t "${SESSION_NAME}:O" C-c
@@ -209,18 +259,28 @@ bootstrap_delivery_window() {
   local state_abs
   local cmd
   local executor_cmd
+  local q_root
+  local q_state_abs
+  local q_script
+  local q_stream
+  local q_model
 
   state_rel="$(state_file_for_window "$window")"
   state_abs="$ROOT_DIR/$state_rel"
+  q_root="$(shell_escape "$ROOT_DIR")"
+  q_state_abs="$(shell_escape "$state_abs")"
+  q_script="$(shell_escape "$SCRIPT_DIR/run_stream_executor.sh")"
+  q_stream="$(shell_escape "$window")"
 
   if [[ "$AUTO_EXECUTORS" -eq 1 ]]; then
-    executor_cmd="\"$SCRIPT_DIR/run_stream_executor.sh\" --stream \"$window\" --interval \"$EXECUTOR_INTERVAL\" --root \"$ROOT_DIR\""
+    executor_cmd="$q_script --stream $q_stream --interval $EXECUTOR_INTERVAL --root $q_root"
     if [[ -n "$EXECUTOR_MODEL" ]]; then
-      executor_cmd+=" --model \"$EXECUTOR_MODEL\""
+      q_model="$(shell_escape "$EXECUTOR_MODEL")"
+      executor_cmd+=" --model $q_model"
     fi
-    cmd="cd \"$ROOT_DIR\"; clear; echo \"[$window] Delivery executor loop\"; echo \"State file: $state_rel\"; echo \"Interval: ${EXECUTOR_INTERVAL}s\"; if [ -n \"$EXECUTOR_MODEL\" ]; then echo \"Model: $EXECUTOR_MODEL\"; else echo \"Model: default\"; fi; echo; if [ -f \"$state_abs\" ]; then sed -n '1,80p' \"$state_abs\"; else echo \"State file missing: $state_rel\"; fi; echo; $executor_cmd"
+    cmd="cd $q_root; clear; echo \"[$window] Delivery executor loop\"; echo \"State file: $state_rel\"; echo \"Interval: ${EXECUTOR_INTERVAL}s\"; if [ -n \"$EXECUTOR_MODEL\" ]; then echo \"Model: $EXECUTOR_MODEL\"; else echo \"Model: default\"; fi; echo; if [ -f $q_state_abs ]; then sed -n '1,80p' $q_state_abs; else echo \"State file missing: $state_rel\"; fi; echo; $executor_cmd"
   else
-    cmd="cd \"$ROOT_DIR\"; clear; echo \"[$window] Delivery stream (manual mode)\"; echo \"State file: $state_rel\"; echo; if [ -f \"$state_abs\" ]; then sed -n '1,120p' \"$state_abs\"; else echo \"State file missing: $state_rel\"; fi; echo; echo \"Executors are disabled (--no-executors).\""
+    cmd="cd $q_root; clear; echo \"[$window] Delivery stream (manual mode)\"; echo \"State file: $state_rel\"; echo; if [ -f $q_state_abs ]; then sed -n '1,120p' $q_state_abs; else echo \"State file missing: $state_rel\"; fi; echo; echo \"Executors are disabled (--no-executors).\""
   fi
 
   tmux send-keys -t "${SESSION_NAME}:${window}" C-c

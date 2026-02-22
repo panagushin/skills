@@ -38,6 +38,25 @@ Options:
 EOF
 }
 
+shell_escape() {
+  printf '%q' "$1"
+}
+
+has_control_chars() {
+  local value="$1"
+  [[ "$value" =~ [[:cntrl:]] ]]
+}
+
+validate_session_name() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+validate_model_name() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9._:+/-]+$ ]]
+}
+
 task_pattern_for_stream() {
   case "$1" in
     D-BE) echo "delivery-backend-*.md" ;;
@@ -140,15 +159,23 @@ restart_stream_executor() {
   local stream="$1"
   local reason="$2"
   local cmd
+  local q_root
+  local q_script
+  local q_stream
+  local q_model
 
   if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     return 1
   fi
 
   ensure_stream_window "$stream"
-  cmd="cd \"$ROOT_DIR\"; clear; echo \"[$stream] executor auto-restarted ($reason)\"; \"$SCRIPT_DIR/run_stream_executor.sh\" --stream \"$stream\" --interval \"$EXECUTOR_INTERVAL\" --root \"$ROOT_DIR\""
+  q_root="$(shell_escape "$ROOT_DIR")"
+  q_script="$(shell_escape "$SCRIPT_DIR/run_stream_executor.sh")"
+  q_stream="$(shell_escape "$stream")"
+  cmd="cd $q_root; clear; echo \"[$stream] executor auto-restarted ($reason)\"; $q_script --stream $q_stream --interval $EXECUTOR_INTERVAL --root $q_root"
   if [[ -n "$EXECUTOR_MODEL" ]]; then
-    cmd="$cmd --model \"$EXECUTOR_MODEL\""
+    q_model="$(shell_escape "$EXECUTOR_MODEL")"
+    cmd="$cmd --model $q_model"
   fi
 
   tmux send-keys -t "${SESSION_NAME}:${stream}" C-c
@@ -373,8 +400,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if has_control_chars "$ROOT_DIR"; then
+  echo "Error: --root contains control characters." >&2
+  exit 1
+fi
+
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "Error: ROOT_DIR does not exist: $ROOT_DIR" >&2
+  exit 1
+fi
+
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+RUNTIME_DIR="$ROOT_DIR/docs/stream-state/runtime"
+LATEST_FILE="$RUNTIME_DIR/operator-watch.latest"
+
+if ! validate_session_name "$SESSION_NAME"; then
+  echo "Error: --session contains unsupported characters. Allowed: letters, digits, '.', '_' and '-'." >&2
+  exit 1
+fi
+
+if [[ -n "$EXECUTOR_MODEL" ]] && ! validate_model_name "$EXECUTOR_MODEL"; then
+  echo "Error: --executor-model contains unsupported characters." >&2
   exit 1
 fi
 

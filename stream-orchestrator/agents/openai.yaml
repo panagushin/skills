@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stream Orchestrator"
+  short_description: "Dispatches and monitors multi-stream task execution"
+  default_prompt: "Use $stream-orchestrator to formalize this request into stream tasks, dispatch owners, and monitor until done."

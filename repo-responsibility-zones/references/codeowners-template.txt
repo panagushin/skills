@@ -1,0 +1,16 @@
+# CODEOWNERS template (example)
+# Keep specific rules above broader ones.
+
+*                                   @org/platform-owners
+/docs/repository-zones/             @org/operator-owners
+
+/src/platform/                      @org/be-platform
+/src/gamecore/                      @org/be-gamecore
+/src/finance/                       @org/be-finance
+/src/contracts/                     @org/be-contracts
+/src/reliability/                   @org/be-reliability
+
+/ui/app-admin/                      @org/frontend
+/ui/app-direction/                  @org/frontend
+
+/integration/                       @org/integration
